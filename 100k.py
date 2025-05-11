@@ -1,99 +1,95 @@
 from spark_session_100k import create_spark
 from pyspark.sql import functions as F
-from pyspark.sql.types import MapType, StringType, IntegerType, StructType, StructField,LongType
+from pyspark.sql.types import StructType, StructField, StringType, IntegerType, LongType
 
 
-spark,logger = create_spark()
-# Create schema when reading u.data
-schema = StructType([StructField("userID", IntegerType(), True),
-                     StructField("movieID", IntegerType(), True),
-                     StructField("rating", IntegerType(), True),
-                     StructField("timestamp", LongType(), True)])
+class MovieRecommender:
+    def __init__(self, ratings_path, movies_path):
+        self.spark, self.logger = create_spark()
+        self.ratings_path = ratings_path
+        self.movies_path = movies_path
+        self.df_ratings = None
+        self.df_movies = None
+        self.similarity_df = None
 
-# Read the file with the given schema and options
-df1 = spark.read \
-    .option("sep", "\t") \
-    .schema(schema) \
-    .csv("file:///C:/Users/AakashMahawar/aakash_spark_course/ml-100k/u.data")
+    def load_data(self):
+        ratings_schema = StructType([
+            StructField("userID", IntegerType(), True),
+            StructField("movieID", IntegerType(), True),
+            StructField("rating", IntegerType(), True),
+            StructField("timestamp", LongType(), True)
+        ])
 
-logger.info('Reading rating data')
-logger.info(f'Shape of the df1 : [{df1.count()},{len(df1.columns)}]')
+        self.df_ratings = self.spark.read.option("sep", "\t").schema(ratings_schema) \
+            .csv(self.ratings_path).select("userID", "movieID", "rating").cache()
 
-schema1 = StructType([
-                     StructField("movieID", IntegerType(), True),
-                     StructField("title", StringType(), True),
-                     StructField("release_date", StringType(), True),
-                     StructField("skip", StringType(), True),  # placeholder for empty field
-                     StructField("imdb_link", StringType(), True)])
+        self.logger.info(f"Ratings loaded with {self.df_ratings.count()} rows.")
 
-# Read the file with the given schema and options
-df2 = spark.read \
-    .option("sep", "|") \
-    .schema(schema1) \
-    .csv("file:///C:/Users/AakashMahawar/aakash_spark_course/ml-100k/u.item")
+        movies_schema = StructType([
+            StructField("movieID", IntegerType(), True),
+            StructField("title", StringType(), True),
+            StructField("release_date", StringType(), True),
+            StructField("skip", StringType(), True),
+            StructField("imdb_link", StringType(), True)
+        ])
 
-df2 = df2[['movieID','title','release_date','imdb_link']]
-logger.info('Reading movie data')
-logger.info(f'Shape of the df2 : [{df2.count()},{len(df2.columns)}]')
+        self.df_movies = self.spark.read.option("sep", "|").schema(movies_schema) \
+            .csv(self.movies_path).select("movieID", "title").cache()
 
-df1_a = df1.alias('a')
-df1_b = df1.alias('b')
-logger.info('Made alias against both dfs')
+        self.logger.info(f"Movies loaded with {self.df_movies.count()} rows.")
 
-# Perform the join
-df = df1_a.join(F.broadcast(df1_b), on="userID", how="inner")
-logger.info('Performed broadcast join')
+    def compute_similarity(self):
+        a = self.df_ratings.alias("a")
+        b = self.df_ratings.alias("b")
 
-# Rename columns clearly
-dff = df.select(
-    F.col("userID"),
-    F.col("a.movieID").alias("movieID_a"),
-    F.col("a.rating").alias("rating_a"),
-    F.col("b.movieID").alias("movieID_b"),
-    F.col("b.rating").alias("rating_b")
-).filter(F.col("movieID_a") != F.col("movieID_b"))
+        joined = a.join(F.broadcast(b), "userID") \
+            .filter(F.col("a.movieID") != F.col("b.movieID")) \
+            .select(
+                F.col("a.movieID").alias("movieID_a"),
+                F.col("b.movieID").alias("movieID_b"),
+                F.col("a.rating").alias("rating_a"),
+                F.col("b.rating").alias("rating_b")
+            )
 
-# cosine similarity
-#  Compute intermediate values
-res = dff.withColumn('product',F.col('rating_a') * F.col('rating_b')).withColumn('rating_a_sqr',F.col('rating_a')**2)\
-.withColumn('rating_b_sqr',F.col('rating_b')**2)
-logger.info('Compute intermediate values')
+        features = joined.withColumn("product", F.col("rating_a") * F.col("rating_b")) \
+            .withColumn("rating_a_sqr", F.col("rating_a")**2) \
+            .withColumn("rating_b_sqr", F.col("rating_b")**2)
 
-# Group by movie pairs and compute cosine similarity
-res1 = res.groupby(['movieID_a', 'movieID_b']).agg(
-    F.sum('product').alias('dot_product'),
-    F.sqrt(F.sum('rating_a_sqr')).alias('norm_a'),
-    F.sqrt(F.sum('rating_b_sqr')).alias('norm_b')
-)
+        self.similarity_df = features.groupBy("movieID_a", "movieID_b").agg(
+            F.sum("product").alias("dot_product"),
+            F.sqrt(F.sum("rating_a_sqr")).alias("norm_a"),
+            F.sqrt(F.sum("rating_b_sqr")).alias("norm_b")
+        ).withColumn(
+            "cosine_score",
+            F.round(F.col("dot_product") / (F.col("norm_a") * F.col("norm_b")), 2)
+        ).select("movieID_a", "movieID_b", "cosine_score")
 
-res1 = res1.withColumn(
-    'cosine_score',
-    F.round(F.col('dot_product') / (F.col('norm_a') * F.col('norm_b')),2))[['movieID_a','movieID_b','cosine_score']]
-logger.info('Compute cosine similarity')
+        self.logger.info("Similarity computation completed.")
 
-# Rename and join on movieID_a
-main = res1.join(
-    F.broadcast(df2.selectExpr("movieID", "title as title_a")),
-    on=df2.movieID == res1.movieID_a,
-    how='inner'
-).drop("movieID")
+    def get_top_similar_movies(self, movie_id, top_n=10):
+        df = self.similarity_df
 
+        df = df.join(F.broadcast(self.df_movies.withColumnRenamed("title", "title_a")),
+                     df.movieID_a == self.df_movies.movieID).drop("movieID")
 
-# # Now join on movieID_b
-res_df = main.join(
-    F.broadcast(df2.selectExpr("movieID", "title as title_b")),
-    on=main.movieID_b == df2.movieID,
-    how='inner'
-)
-# Select final columns
-res_df = res_df[["movieID_a","title_a", "title_b", "cosine_score"]]
+        df = df.join(F.broadcast(self.df_movies.withColumnRenamed("title", "title_b")),
+                     df.movieID_b == self.df_movies.movieID).drop("movieID")
 
-res_df = res_df[res_df['movieID_a']==101].sort('cosine_score',ascending = False) #specify movie id
-logger.info('Get top 10 similar movies against any specified movie')
-res_df.show(10,truncate = False)
+        result = df.filter(F.col("movieID_a") == movie_id) \
+            .select("movieID_a", "title_a", "title_b", "cosine_score") \
+            .orderBy(F.desc("cosine_score"))
+
+        self.logger.info(f"Top {top_n} similar movies for movie ID {movie_id}")
+        result.show(top_n, truncate=False)
+        return result
 
 
-
-
-
-
+# Usage
+if __name__ == "__main__":
+    recommender = MovieRecommender(
+        ratings_path="file:///C:/Users/AakashMahawar/aakash_spark_course/ml-100k/u.data",
+        movies_path="file:///C:/Users/AakashMahawar/aakash_spark_course/ml-100k/u.item"
+    )
+    recommender.load_data()
+    recommender.compute_similarity()
+    recommender.get_top_similar_movies(movie_id=101, top_n=10)
