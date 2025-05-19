@@ -5,6 +5,7 @@ emr = boto3.client('emr', region_name='ap-south-1')  # update region
 
 CLUSTER_NAME = "aakash_spark_cluster"
 LOG_URI = "s3://spark-bucket-aakash/spark_logs/"
+
 BOOTSTRAP_ACTIONS = [
     {
         'Name': 'Download log4j properties',
@@ -29,12 +30,11 @@ SPARK_STEP = {
     }
 }
 
-
 def create_cluster():
     response = emr.run_job_flow(
         Name=CLUSTER_NAME,
         LogUri=LOG_URI,
-        ReleaseLabel='emr-7.8.0',  # or your preferred version
+        ReleaseLabel='emr-7.8.0',
         Instances={
             'InstanceGroups': [
                 {
@@ -53,7 +53,7 @@ def create_cluster():
                 },
                 {
                     'Name': 'Task nodes',
-                    'Market': 'ON_DEMAND',  # or 'SPOT' if cost-sensitive
+                    'Market': 'ON_DEMAND',
                     'InstanceRole': 'TASK',
                     'InstanceType': 'm5.xlarge',
                     'InstanceCount': 1
@@ -61,17 +61,32 @@ def create_cluster():
             ],
             'KeepJobFlowAliveWhenNoSteps': True,
             'TerminationProtected': False,
-            'Ec2SubnetId': 'subnet-0df634487a714c648',  # your subnet id
-            'EmrManagedMasterSecurityGroup': 'sg-0576997556757ab4d',  # your security groups
+            'Ec2SubnetId': 'subnet-0df634487a714c648',
+            'EmrManagedMasterSecurityGroup': 'sg-0576997556757ab4d',
             'EmrManagedSlaveSecurityGroup': 'sg-0525d2760714aae89',
         },
         BootstrapActions=BOOTSTRAP_ACTIONS,
         Applications=[{'Name': 'Spark'}],
-        JobFlowRole='AmazonEMR-InstanceProfile-20250515T181538',  # Ensure proper IAM roles
+        JobFlowRole='AmazonEMR-InstanceProfile-20250515T181538',
         ServiceRole='AmazonEMR-ServiceRole-20250515T181557',
         VisibleToAllUsers=True
     )
     return response['JobFlowId']
+
+
+def wait_for_cluster(cluster_id):
+    print(f"Waiting for cluster {cluster_id} to be in WAITING state...")
+    while True:
+        response = emr.describe_cluster(ClusterId=cluster_id)
+        state = response['Cluster']['Status']['State']
+        print(f"Cluster state: {state}")
+        if state == 'WAITING':
+            print("Cluster is ready!")
+            break
+        elif state in ('TERMINATING', 'TERMINATED', 'TERMINATED_WITH_ERRORS'):
+            reason = response['Cluster']['Status']['StateChangeReason']['Message']
+            raise Exception(f"Cluster terminated early with state: {state}. Reason: {reason}")
+        time.sleep(30)
 
 
 def add_spark_step(cluster_id):
@@ -95,10 +110,11 @@ def terminate_cluster(cluster_id):
 
 if __name__ == "__main__":
     cluster_id = create_cluster()
-    print(f"Created cluster {cluster_id}, waiting for cluster to be ready...")
-    time.sleep(300)  # simple wait, can improve with DescribeCluster API to check status
+    print(f"Created cluster {cluster_id}...")
 
+    wait_for_cluster(cluster_id)  # ✅ replaces fixed sleep with polling
     step_id = add_spark_step(cluster_id)
+
     print(f"Added spark step {step_id}, waiting for completion...")
     step_state = wait_for_step(cluster_id, step_id)
     print(f"Step finished with state: {step_state}")
