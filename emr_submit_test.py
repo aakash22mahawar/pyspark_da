@@ -52,20 +52,6 @@ def create_cluster():
                     'InstanceCount': 1,
                 },
                 {
-                    'Name': 'Master nodes',
-                    'Market': 'ON_DEMAND',
-                    'InstanceRole': 'MASTER',
-                    'InstanceType': 'm5.xlarge',
-                    'InstanceCount': 1
-                },
-                {
-                    'Name': 'Core nodes',
-                    'Market': 'ON_DEMAND',
-                    'InstanceRole': 'CORE',
-                    'InstanceType': 'm5.xlarge',
-                    'InstanceCount': 1
-                },
-                {
                     'Name': 'Task nodes',
                     'Market': 'ON_DEMAND',  # or 'SPOT' if cost-sensitive
                     'InstanceRole': 'TASK',
