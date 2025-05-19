@@ -81,8 +81,8 @@ def create_cluster():
         },
         BootstrapActions=BOOTSTRAP_ACTIONS,
         Applications=[{'Name': 'Spark'}],
-        JobFlowRole='EMR_EC2_DefaultRole',  # Ensure proper IAM roles
-        ServiceRole='EMR_DefaultRole',
+        JobFlowRole='AmazonEMR-InstanceProfile-20250515T181538',  # Ensure proper IAM roles
+        ServiceRole='AmazonEMR-ServiceRole-20250515T181557',
         VisibleToAllUsers=True
     )
     return response['JobFlowId']
