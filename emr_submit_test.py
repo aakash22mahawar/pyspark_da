@@ -1,16 +1,16 @@
 import boto3
 import time
 
-emr = boto3.client('emr', region_name='ap-south-1')  # update region
+emr = boto3.client('emr', region_name='ap-south-1')  # Update region if needed
 
 CLUSTER_NAME = "aakash_spark_cluster"
 LOG_URI = "s3://spark-bucket-aakash/spark_logs/"
 
 BOOTSTRAP_ACTIONS = [
     {
-        'Name': 'Download log4j properties',
+        'Name': 'Setup log4j and upload logs to S3',
         'ScriptBootstrapAction': {
-            'Path': 's3://spark-bucket-aakash/bootstrap/bootstrap.sh',
+            'Path': 's3://spark-bucket-aakash/bootstrap/bootstrap.sh',  # ✅ Single .sh file does both
             'Args': []
         }
     }
@@ -112,7 +112,7 @@ if __name__ == "__main__":
     cluster_id = create_cluster()
     print(f"Created cluster {cluster_id}...")
 
-    wait_for_cluster(cluster_id)  # ✅ replaces fixed sleep with polling
+    wait_for_cluster(cluster_id)  # ✅ Wait until it's ready
     step_id = add_spark_step(cluster_id)
 
     print(f"Added spark step {step_id}, waiting for completion...")
