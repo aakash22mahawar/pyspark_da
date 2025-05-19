@@ -30,4 +30,4 @@ jobs:
         aws-region: ap-south-1
 
     - name: Run EMR submit script
-      run: python emr_submit.py
+      run: python emr_submit_test.py
