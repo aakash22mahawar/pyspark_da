@@ -13,7 +13,7 @@ def create_spark():
         .master("local[2]") \
         .config("spark.local.dir", r"C:\Users\AakashMahawar\aakash_spark") \
         .config("spark.ui.port", "4050") \
-        .config("spark.driver.extraJavaOptions", "-Dlog4j.configurationFile=file:///C:/Users/AakashMahawar/aakash_spark/conf/log4j2.properties")\
+        .config("spark.driver.extraJavaOptions", "-Dlog4j.configurationFile=file:///C:/Users/AakashMahawar/aakash_spark/conf/log4j.properties")\
         .config("spark.driver.memory", "1g") \
         .config("spark.executor.memory", "1g") \
         .getOrCreate()
