@@ -8,7 +8,7 @@ LOG_URI = "s3://spark-bucket-aakash/spark_logs/"
 
 BOOTSTRAP_ACTIONS = [
     {
-        'Name': 'Setup log4j and upload logs to S3',
+        'Name': 'Setup log4j and create logs folder',
         'ScriptBootstrapAction': {
             'Path': 's3://spark-bucket-aakash/bootstrap/bootstrap.sh',
             'Args': []
