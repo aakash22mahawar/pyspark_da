@@ -1,7 +1,7 @@
 import boto3
 import time
 
-emr = boto3.client('emr', region_name='ap-south-1')  # Update region if needed
+emr = boto3.client('emr', region_name='ap-south-1')
 
 CLUSTER_NAME = "aakash_spark_cluster"
 LOG_URI = "s3://spark-bucket-aakash/spark_logs/"
@@ -10,7 +10,7 @@ BOOTSTRAP_ACTIONS = [
     {
         'Name': 'Setup log4j and upload logs to S3',
         'ScriptBootstrapAction': {
-            'Path': 's3://spark-bucket-aakash/bootstrap/bootstrap.sh',  # ✅ Single .sh file does both
+            'Path': 's3://spark-bucket-aakash/bootstrap/bootstrap.sh',
             'Args': []
         }
     }
@@ -26,6 +26,20 @@ SPARK_STEP = {
             '--conf', 'spark.driver.extraJavaOptions=-Dlog4j.configurationFile=file:///tmp/log4j.properties',
             '--conf', 'spark.executor.extraJavaOptions=-Dlog4j.configurationFile=file:///tmp/log4j.properties',
             's3://spark-bucket-aakash/scripts/test1.py'
+        ]
+    }
+}
+
+UPLOAD_LOG_STEP = {
+    'Name': 'Upload Spark log to S3',
+    'ActionOnFailure': 'CONTINUE',
+    'HadoopJarStep': {
+        'Jar': 'command-runner.jar',
+        'Args': [
+            'bash', '-c',
+            'if [ -f /tmp/logs/spark_app.log ]; then '
+            'aws s3 cp /tmp/logs/spark_app.log s3://spark-bucket-aakash/spark_logs/spark_app-$(date +%d-%m-%y-%H-%M-%S).log;'
+            'else echo "Log file not found, skipping upload."; fi'
         ]
     }
 }
@@ -73,7 +87,6 @@ def create_cluster():
     )
     return response['JobFlowId']
 
-
 def wait_for_cluster(cluster_id):
     print(f"Waiting for cluster {cluster_id} to be in WAITING state...")
     while True:
@@ -88,11 +101,12 @@ def wait_for_cluster(cluster_id):
             raise Exception(f"Cluster terminated early with state: {state}. Reason: {reason}")
         time.sleep(30)
 
-
-def add_spark_step(cluster_id):
-    step_response = emr.add_job_flow_steps(JobFlowId=cluster_id, Steps=[SPARK_STEP])
-    return step_response['StepIds'][0]
-
+def add_spark_steps(cluster_id):
+    step_response = emr.add_job_flow_steps(
+        JobFlowId=cluster_id,
+        Steps=[SPARK_STEP, UPLOAD_LOG_STEP]
+    )
+    return step_response['StepIds']
 
 def wait_for_step(cluster_id, step_id):
     while True:
@@ -103,21 +117,21 @@ def wait_for_step(cluster_id, step_id):
             return state
         time.sleep(30)
 
-
 def terminate_cluster(cluster_id):
     emr.terminate_job_flows(JobFlowIds=[cluster_id])
-
 
 if __name__ == "__main__":
     cluster_id = create_cluster()
     print(f"Created cluster {cluster_id}...")
 
-    wait_for_cluster(cluster_id)  # ✅ Wait until it's ready
-    step_id = add_spark_step(cluster_id)
+    wait_for_cluster(cluster_id)
+    step_ids = add_spark_steps(cluster_id)
 
-    print(f"Added spark step {step_id}, waiting for completion...")
-    step_state = wait_for_step(cluster_id, step_id)
-    print(f"Step finished with state: {step_state}")
+    print(f"Waiting for Spark step {step_ids[0]} to complete...")
+    wait_for_step(cluster_id, step_ids[0])
+
+    print(f"Waiting for log upload step {step_ids[1]} to complete...")
+    wait_for_step(cluster_id, step_ids[1])
 
     print("Terminating cluster...")
     terminate_cluster(cluster_id)
