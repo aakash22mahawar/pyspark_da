@@ -37,8 +37,8 @@ UPLOAD_LOG_STEP = {
         'Jar': 'command-runner.jar',
         'Args': [
             'bash', '-c',
-            'if [ -f /tmp/logs/spark_1m.log ]; then '
-            'aws s3 cp /tmp/logs/spark_1m.log s3://spark-bucket-aakash/spark_logs/logs/spark_1m-$(date +%d-%m-%y-%H-%M-%S).log;'
+            'if [ -f /tmp/logs/spark_app.log ]; then '
+            'aws s3 cp /tmp/logs/spark_app.log s3://spark-bucket-aakash/spark_logs/logs/spark_app-$(date +%d-%m-%y-%H-%M-%S).log;'
             'else echo "Log file not found, skipping upload."; fi'
         ]
     }
