@@ -96,6 +96,7 @@ class MovieRecommender:
         result.write.mode("overwrite").parquet(s3_output_dir)
 
         self.logger.info(f"Output successfully written to {s3_output_dir}")
+        result.show()
 
         return result
 
