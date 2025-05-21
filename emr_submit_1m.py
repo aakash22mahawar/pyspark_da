@@ -17,7 +17,7 @@ BOOTSTRAP_ACTIONS = [
 ]
 
 SPARK_STEP = {
-    'Name': 'Run pyspark testing with log job',
+    'Name': 'Run pyspark 1M data with logs job',
     'ActionOnFailure': 'CONTINUE',
     'HadoopJarStep': {
         'Jar': 'command-runner.jar',
@@ -25,20 +25,20 @@ SPARK_STEP = {
             'spark-submit',
             '--conf', 'spark.driver.extraJavaOptions=-Dlog4j.configurationFile=file:///tmp/log4j.properties',
             '--conf', 'spark.executor.extraJavaOptions=-Dlog4j.configurationFile=file:///tmp/log4j.properties',
-            's3://spark-bucket-aakash/scripts/emr_test.py'
+            's3://spark-bucket-aakash/scripts/1m_emr.py'
         ]
     }
 }
 
 UPLOAD_LOG_STEP = {
-    'Name': 'Upload Spark log to S3',
+    'Name': 'Upload Spark logs to S3',
     'ActionOnFailure': 'CONTINUE',
     'HadoopJarStep': {
         'Jar': 'command-runner.jar',
         'Args': [
             'bash', '-c',
-            'if [ -f /tmp/logs/spark_app.log ]; then '
-            'aws s3 cp /tmp/logs/spark_app.log s3://spark-bucket-aakash/spark_logs/logs/spark_app-$(date +%d-%m-%y-%H-%M-%S).log;'
+            'if [ -f /tmp/logs/spark_1m.log ]; then '
+            'aws s3 cp /tmp/logs/spark_1m.log s3://spark-bucket-aakash/spark_logs/logs/spark_1m-$(date +%d-%m-%y-%H-%M-%S).log;'
             'else echo "Log file not found, skipping upload."; fi'
         ]
     }

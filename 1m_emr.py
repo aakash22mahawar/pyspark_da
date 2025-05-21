@@ -1,32 +1,31 @@
 from pyspark.sql import SparkSession, functions as F
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType, LongType
-import sys
-import os
-
-# Minimal Spark setup for EMR
-os.environ['PYSPARK_PYTHON'] = sys.executable
-os.environ['PYSPARK_DRIVER_PYTHON'] = sys.executable
-
-def create_spark():
-    spark = (SparkSession.builder
-        .appName("pyspark_movie_recommender")
-        .config("spark.driver.extraJavaOptions", "-Dlog4j.configuration=file:log4j2.properties")
-        .config("spark.executor.extraJavaOptions", "-Dlog4j.configuration=file:log4j2.properties")
-        .getOrCreate())
-
-    sc = spark.sparkContext
-    log4jLogger = sc._jvm.org.apache.log4j
-    logger = log4jLogger.LogManager.getLogger(__name__)
-    logger.setLevel(log4jLogger.Level.INFO)
-    logger.info("Starting Spark Session on EMR")
-    return spark, logger
+import random
+import datetime
 
 
 class MovieRecommender:
-    def __init__(self, ratings_path, movies_path):
-        self.spark, self.logger = create_spark()
+    def __init__(self, ratings_path, movies_path, output_path):
+        self.spark = (SparkSession.builder.appName("pyspark_movie_recommender")
+                      .config("spark.driver.memory", "4g")
+                      .config("spark.executor.memory", "4g")
+                      .config("spark.sql.shuffle.partitions", "50")
+                      .config("spark.default.parallelism", "4")
+                      .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+                      .config("spark.executor.extraJavaOptions", "-XX:+UseG1GC -XX:MaxGCPauseMillis=20")
+                      .config("spark.driver.extraJavaOptions", "-XX:+UseG1GC -XX:MaxGCPauseMillis=20")
+                      .getOrCreate())
+
+        sc = self.spark.sparkContext
+        log4jLogger = sc._jvm.org.apache.log4j
+        self.logger = log4jLogger.LogManager.getLogger(__name__)
+        self.logger.setLevel(log4jLogger.Level.INFO)
+        self.logger.info("Starting Spark Session 1M data on EMR")
+
         self.ratings_path = ratings_path
         self.movies_path = movies_path
+        self.output_path = output_path
+
         self.df_ratings = None
         self.df_movies = None
         self.similarity_df = None
@@ -57,14 +56,14 @@ class MovieRecommender:
         joined = a.join(F.broadcast(b), "userID") \
             .filter(F.col("a.movieID") != F.col("b.movieID")) \
             .select(
-                F.col("a.movieID").alias("movieID_a"),
-                F.col("b.movieID").alias("movieID_b"),
-                F.col("a.rating").alias("rating_a"),
-                F.col("b.rating").alias("rating_b")
-            )
+            F.col("a.movieID").alias("movieID_a"),
+            F.col("b.movieID").alias("movieID_b"),
+            F.col("a.rating").alias("rating_a"),
+            F.col("b.rating").alias("rating_b")
+        )
         features = joined.withColumn("product", F.col("rating_a") * F.col("rating_b")) \
-            .withColumn("rating_a_sqr", F.col("rating_a")**2) \
-            .withColumn("rating_b_sqr", F.col("rating_b")**2)
+            .withColumn("rating_a_sqr", F.col("rating_a") ** 2) \
+            .withColumn("rating_b_sqr", F.col("rating_b") ** 2)
 
         self.similarity_df = features.groupBy("movieID_a", "movieID_b").agg(
             F.sum("product").alias("dot_product"),
@@ -83,19 +82,35 @@ class MovieRecommender:
                      df.movieID_a == self.df_movies.movieID).drop("movieID")
         df = df.join(F.broadcast(self.df_movies.withColumnRenamed("title", "title_b")),
                      df.movieID_b == self.df_movies.movieID).drop("movieID")
+
         result = df.filter(F.col("movieID_a") == movie_id) \
             .select("movieID_a", "title_a", "title_b", "cosine_score") \
-            .orderBy(F.desc("cosine_score"))
-        self.logger.info(f"Top {top_n} similar movies for movie ID {movie_id}")
-        result.show(top_n, truncate=False)
+            .orderBy(F.desc("cosine_score")) \
+            .limit(top_n)
+
+        self.logger.info(f"Writing top {top_n} similar movies for movie ID {movie_id} to S3")
+
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        s3_output_dir = f"{self.output_path}/movie_{movie_id}_{timestamp}"
+
+        result.write.mode("overwrite").parquet(s3_output_dir)
+
+        self.logger.info(f"Output successfully written to {s3_output_dir}")
+
         return result
 
-# === EMR Execution Starts Here ===
+
 if __name__ == "__main__":
     recommender = MovieRecommender(
-        ratings_path="s3://spark-bucket-aakash/ml-1m/ratings.dat",
-        movies_path="s3://spark-bucket-aakash/ml-1m/movies.dat"
+        ratings_path="s3://spark-bucket-aakash/data_files/ml-1m/ratings.dat",
+        movies_path="s3://spark-bucket-aakash/data_files/ml-1m/movies.dat",
+        output_path="s3://spark-bucket-aakash/output/similar_movies"
     )
     recommender.load_data()
     recommender.compute_similarity()
-    recommender.get_top_similar_movies(movie_id=101, top_n=10)
+
+    movie_id_list = [row.movieID for row in recommender.df_movies.select("movieID").collect()]
+    random_movie_id = random.choice(movie_id_list)
+    recommender.logger.info(f"Randomly selected movie ID: {random_movie_id}")
+
+    recommender.get_top_similar_movies(movie_id=random_movie_id, top_n=10)
