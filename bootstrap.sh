@@ -10,11 +10,10 @@ echo "Downloaded log4j.properties"
 mkdir -p /tmp/logs
 echo "Created /tmp/logs directory"
 
-# List /tmp contents and log them
-echo "=== /tmp directory contents ===" >> /tmp/bootstrap_log.txt
-ls -lh /tmp >> /tmp/bootstrap_log.txt
-
-# Print log to stdout so EMR uploads it
-cat /tmp/bootstrap_log.txt
-
 echo "Bootstrap script completed"
+
+# âœ… Upload actual EMR bootstrap logs to S3
+timestamp=$(date +%d-%m-%y-%H-%M-%S)
+aws s3 cp --recursive /emr/instance-controller/log/bootstrap-actions/ \
+  s3://spark-bucket-aakash/spark_logs/real_bootstrap_logs/${timestamp}/
+echo "Uploaded actual EMR bootstrap logs to S3 at spark_logs/real_bootstrap_logs/${timestamp}/"
