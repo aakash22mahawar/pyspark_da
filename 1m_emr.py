@@ -4,7 +4,16 @@ from pyspark.sql.types import StructType, StructField, StringType, IntegerType, 
 
 class MovieRecommender:
     def __init__(self, ratings_path, movies_path):
-        self.spark = SparkSession.builder.appName("pyspark_movie_recommender").getOrCreate()
+        self.spark = SparkSession.builder.appName("pyspark_movie_recommender")
+        .config("spark.driver.memory", "4g")
+        .config("spark.executor.memory", "4g")
+        .config("spark.sql.shuffle.partitions", "50")
+        .config("spark.default.parallelism", "4")
+        .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+        .config("spark.executor.extraJavaOptions", "-XX:+UseG1GC -XX:MaxGCPauseMillis=20")
+        .config("spark.driver.extraJavaOptions", "-XX:+UseG1GC -XX:MaxGCPauseMillis=20")
+        .getOrCreate()
+
         sc = self.spark.sparkContext
         log4jLogger = sc._jvm.org.apache.log4j
         self.logger = log4jLogger.LogManager.getLogger(__name__)
