@@ -90,7 +90,7 @@ class MovieRecommender:
 
         self.logger.info(f"Writing top {top_n} similar movies for movie ID {movie_id} to S3")
 
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.datetime.now().strftime("%d_%m_%Y_%H_%M_%S")
         s3_output_dir = f"{self.output_path}/movie_{movie_id}_{timestamp}"
 
         result.write.mode("overwrite").parquet(s3_output_dir)
