@@ -1,30 +1,15 @@
 from pyspark.sql import SparkSession, functions as F
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType, LongType
-import sys
-import os
-
-# Minimal Spark setup for EMR
-os.environ['PYSPARK_PYTHON'] = sys.executable
-os.environ['PYSPARK_DRIVER_PYTHON'] = sys.executable
-
-def create_spark():
-    spark = (SparkSession.builder
-        .appName("pyspark_movie_recommender")
-        .config("spark.driver.extraJavaOptions", "-Dlog4j.configuration=file:log4j2.properties")
-        .config("spark.executor.extraJavaOptions", "-Dlog4j.configuration=file:log4j2.properties")
-        .getOrCreate())
-
-    sc = spark.sparkContext
-    log4jLogger = sc._jvm.org.apache.log4j
-    logger = log4jLogger.LogManager.getLogger(__name__)
-    logger.setLevel(log4jLogger.Level.INFO)
-    logger.info("Starting Spark Session on EMR")
-    return spark, logger
 
 
 class MovieRecommender:
     def __init__(self, ratings_path, movies_path):
-        self.spark, self.logger = create_spark()
+        self.spark = SparkSession.builder.appName("pyspark_movie_recommender").getOrCreate()
+        sc = self.spark.sparkContext
+        log4jLogger = sc._jvm.org.apache.log4j
+        self.logger = log4jLogger.LogManager.getLogger(__name__)
+        self.logger.setLevel(log4jLogger.Level.INFO)
+        self.logger.info("Starting Spark Session 1M data on EMR")
         self.ratings_path = ratings_path
         self.movies_path = movies_path
         self.df_ratings = None
@@ -93,8 +78,8 @@ class MovieRecommender:
 # === EMR Execution Starts Here ===
 if __name__ == "__main__":
     recommender = MovieRecommender(
-        ratings_path="s3://spark-bucket-aakash/ml-1m/ratings.dat",
-        movies_path="s3://spark-bucket-aakash/ml-1m/movies.dat"
+        ratings_path="s3://spark-bucket-aakash/data_files/ml-1m/ratings.dat",
+        movies_path="s3://spark-bucket-aakash/data_files/ml-1m/movies.dat"
     )
     recommender.load_data()
     recommender.compute_similarity()
