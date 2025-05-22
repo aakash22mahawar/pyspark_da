@@ -85,8 +85,7 @@ class MovieRecommender:
 
         result = df.filter(F.col("movieID_a") == movie_id) \
             .select("movieID_a", "title_a", "title_b", "cosine_score") \
-            .orderBy(F.desc("cosine_score")) \
-            .limit(top_n)
+            .orderBy(F.desc("cosine_score"))
 
         self.logger.info(f"Writing top {top_n} similar movies for movie ID {movie_id} to S3")
 
@@ -96,7 +95,7 @@ class MovieRecommender:
         result.write.mode("overwrite").parquet(s3_output_dir)
 
         self.logger.info(f"Output successfully written to {s3_output_dir}")
-        result.show()
+        result.show(top_n, truncate=False)
 
         return result
 
