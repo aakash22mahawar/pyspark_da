@@ -12,14 +12,15 @@ def create_spark():
         .appName("pyspark_course")
         .master("local[*]")      # uses all logical cores  psutil.cpu_count(logical=True)
         .config("spark.local.dir", r"C:\Users\AakashMahawar\aakash_spark")
-        .config("spark.ui.port", "4050")
+        .config("spark.ui.port", "4051")
+        .config("spark.driver.extraJavaOptions","-Dlog4j.configurationFile=file:///C:/Users/AakashMahawar/aakash_spark/conf/log4j.properties")
         .config("spark.driver.memory", "4g")
         .config("spark.executor.memory", "4g")
         .config("spark.sql.shuffle.partitions", "50")
         .config("spark.default.parallelism", "4")
         .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
         .config("spark.executor.extraJavaOptions", "-XX:+UseG1GC -XX:MaxGCPauseMillis=20")
-        .config("spark.driver.extraJavaOptions", "-XX:+UseG1GC -XX:MaxGCPauseMillis=20")
+        #.config("spark.driver.extraJavaOptions", "-XX:+UseG1GC -XX:MaxGCPauseMillis=20")
         .getOrCreate())
 
     sc = spark.sparkContext

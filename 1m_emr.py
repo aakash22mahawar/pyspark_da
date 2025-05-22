@@ -53,6 +53,7 @@ class MovieRecommender:
     def compute_similarity(self):
         a = self.df_ratings.alias("a")
         b = self.df_ratings.alias("b")
+
         joined = a.join(F.broadcast(b), "userID") \
             .filter(F.col("a.movieID") != F.col("b.movieID")) \
             .select(
@@ -61,6 +62,7 @@ class MovieRecommender:
             F.col("a.rating").alias("rating_a"),
             F.col("b.rating").alias("rating_b")
         )
+
         features = joined.withColumn("product", F.col("rating_a") * F.col("rating_b")) \
             .withColumn("rating_a_sqr", F.col("rating_a") ** 2) \
             .withColumn("rating_b_sqr", F.col("rating_b") ** 2)
@@ -68,11 +70,14 @@ class MovieRecommender:
         self.similarity_df = features.groupBy("movieID_a", "movieID_b").agg(
             F.sum("product").alias("dot_product"),
             F.sqrt(F.sum("rating_a_sqr")).alias("norm_a"),
-            F.sqrt(F.sum("rating_b_sqr")).alias("norm_b")
+            F.sqrt(F.sum("rating_b_sqr")).alias("norm_b"),
+            F.count("*").alias("numPairs")  # 👈 count of user pairs
         ).withColumn(
             "cosine_score",
             F.round(F.col("dot_product") / (F.col("norm_a") * F.col("norm_b")), 2)
-        ).select("movieID_a", "movieID_b", "cosine_score")
+        ).select("movieID_a", "movieID_b", "cosine_score", "numPairs")  # 👈 include numPairs
+
+        self.similarity_df = self.similarity_df.filter(F.col("numPairs") > 50)
 
         self.logger.info("Similarity computation completed.")
 
