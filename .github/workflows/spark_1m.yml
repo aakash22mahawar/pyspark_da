@@ -3,7 +3,7 @@ name: EMR Spark_1M CI/CD Pipeline
 on:
   push:
     branches:
-      - ci_cd_1m
+      - ci_cd_1m_improved
 
 jobs:
   run-emr-spark-job:
