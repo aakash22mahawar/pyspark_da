@@ -1,6 +1,7 @@
 from spark_session_100k import create_spark
 from pyspark.sql import functions as F
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType, LongType
+import random
 
 
 class MovieRecommender:
@@ -88,9 +89,14 @@ class MovieRecommender:
 # Usage
 if __name__ == "__main__":
     recommender = MovieRecommender(
-        ratings_path="file:///C:/Users/AakashMahawar/aakash_spark_course/ml-1m/ratings.dat",
-        movies_path="file:///C:/Users/AakashMahawar/aakash_spark_course/ml-1m/movies.dat"
+        ratings_path="file:///home/amahawar/spark_course/ml-1m/ratings.dat",
+        movies_path="file:///home/amahawar/spark_course/ml-1m/movies.dat"
     )
     recommender.load_data()
     recommender.compute_similarity()
-    recommender.get_top_similar_movies(movie_id=101, top_n=10)
+
+    movie_id_list = [row.movieID for row in recommender.df_movies.select("movieID").collect()]
+    random_movie_id = random.choice(movie_id_list)
+    recommender.logger.info(f"Randomly selected movie ID: {random_movie_id}")
+
+    recommender.get_top_similar_movies(movie_id=random_movie_id, top_n=10)
